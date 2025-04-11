@@ -1,4 +1,7 @@
 import os
+import sys
+import logging
+from dotenv import load_dotenv
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 from mcp.server.fastmcp import FastMCP
@@ -9,28 +12,56 @@ from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest
 from alpaca.data.timeframe import TimeFrame
 
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Load environment variables from .env file
+load_dotenv()
+
 # Initialize FastMCP server
-mcp = FastMCP("alpaca-trading")
+try:
+    mcp = FastMCP("alpaca-trading")
+    logger.info("MCP server initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize MCP server: {e}")
+    sys.exit(1)
 
 # Initialize Alpaca clients using environment variables
 API_KEY = os.getenv("API_KEY_ID")
 API_SECRET = os.getenv("API_SECRET_KEY")
+PAPER = os.getenv("PAPER", "true").lower() == "true"
 
 # Check if keys are available
 if not API_KEY or not API_SECRET:
+    logger.error("Alpaca API credentials not found in environment variables.")
     raise ValueError("Alpaca API credentials not found in environment variables.")
 
-# Initialize trading and data clients
-trading_client = TradingClient(API_KEY, API_SECRET, paper=True)
-stock_client = StockHistoricalDataClient(API_KEY, API_SECRET)
+try:
+    # Initialize trading and data clients
+    trading_client = TradingClient(API_KEY, API_SECRET, paper=PAPER)
+    stock_client = StockHistoricalDataClient(API_KEY, API_SECRET)
+    logger.info("Alpaca clients initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize Alpaca clients: {e}")
+    sys.exit(1)
 
 # Account information tools
 @mcp.tool()
-async def get_account_info() -> str:
-    """Get the current account information including balances and status."""
-    account = trading_client.get_account()
+async def get_account_info(api_key: str, api_secret: str, paper: bool = True) -> str:
+    """
+    Get the current account information including balances and status.
     
-    info = f"""
+    Args:
+        api_key: Alpaca API key ID
+        api_secret: Alpaca API secret key
+        paper: Whether to use paper trading (default: True)
+    """
+    try:
+        trading_client = TradingClient(api_key, api_secret, paper=paper)
+        account = trading_client.get_account()
+        
+        info = f"""
 Account Information:
 -------------------
 Account ID: {account.id}
@@ -45,19 +76,30 @@ Short Market Value: ${float(account.short_market_value):.2f}
 Pattern Day Trader: {'Yes' if account.pattern_day_trader else 'No'}
 Day Trades Remaining: {account.daytrade_count if hasattr(account, 'daytrade_count') else 'Unknown'}
 """
-    return info
+        return info
+    except Exception as e:
+        return f"Error getting account info: {str(e)}"
 
 @mcp.tool()
-async def get_positions() -> str:
-    """Get all current positions in the portfolio."""
-    positions = trading_client.get_all_positions()
+async def get_positions(api_key: str, api_secret: str, paper: bool = True) -> str:
+    """
+    Get all current positions in the portfolio.
     
-    if not positions:
-        return "No open positions found."
-    
-    result = "Current Positions:\n-------------------\n"
-    for position in positions:
-        result += f"""
+    Args:
+        api_key: Alpaca API key ID
+        api_secret: Alpaca API secret key
+        paper: Whether to use paper trading (default: True)
+    """
+    try:
+        trading_client = TradingClient(api_key, api_secret, paper=paper)
+        positions = trading_client.get_all_positions()
+        
+        if not positions:
+            return "No open positions found."
+        
+        result = "Current Positions:\n-------------------\n"
+        for position in positions:
+            result += f"""
 Symbol: {position.symbol}
 Quantity: {position.qty} shares
 Market Value: ${float(position.market_value):.2f}
@@ -66,18 +108,23 @@ Current Price: ${float(position.current_price):.2f}
 Unrealized P/L: ${float(position.unrealized_pl):.2f} ({float(position.unrealized_plpc) * 100:.2f}%)
 -------------------
 """
-    return result
+        return result
+    except Exception as e:
+        return f"Error getting positions: {str(e)}"
 
 # Market data tools
 @mcp.tool()
-async def get_stock_quote(symbol: str) -> str:
+async def get_stock_quote(symbol: str, api_key: str, api_secret: str) -> str:
     """
     Get the latest quote for a stock.
     
     Args:
         symbol: Stock ticker symbol (e.g., AAPL, MSFT)
+        api_key: Alpaca API key ID
+        api_secret: Alpaca API secret key
     """
     try:
+        stock_client = StockHistoricalDataClient(api_key, api_secret)
         request_params = StockLatestQuoteRequest(symbol_or_symbols=symbol)
         quotes = stock_client.get_stock_latest_quote(request_params)
         
@@ -98,16 +145,18 @@ Timestamp: {quote.timestamp}
         return f"Error fetching quote for {symbol}: {str(e)}"
 
 @mcp.tool()
-async def get_stock_bars(symbol: str, days: int = 5) -> str:
+async def get_stock_bars(symbol: str, api_key: str, api_secret: str, days: int = 5) -> str:
     """
     Get historical price bars for a stock.
     
     Args:
         symbol: Stock ticker symbol (e.g., AAPL, MSFT)
+        api_key: Alpaca API key ID
+        api_secret: Alpaca API secret key
         days: Number of trading days to look back (default: 5)
     """
     try:
-        # Calculate start time based on days
+        stock_client = StockHistoricalDataClient(api_key, api_secret)
         start_time = datetime.now() - timedelta(days=days)
         
         request_params = StockBarsRequest(
@@ -133,16 +182,20 @@ async def get_stock_bars(symbol: str, days: int = 5) -> str:
 
 # Order management tools
 @mcp.tool()
-async def get_orders(status: str = "all", limit: int = 10) -> str:
+async def get_orders(api_key: str, api_secret: str, paper: bool = True, status: str = "all", limit: int = 10) -> str:
     """
     Get orders with the specified status.
     
     Args:
+        api_key: Alpaca API key ID
+        api_secret: Alpaca API secret key
+        paper: Whether to use paper trading (default: True)
         status: Order status to filter by (open, closed, all)
         limit: Maximum number of orders to return (default: 10)
     """
     try:
-        # Convert status string to enum
+        trading_client = TradingClient(api_key, api_secret, paper=paper)
+        
         if status.lower() == "open":
             query_status = QueryOrderStatus.OPEN
         elif status.lower() == "closed":
@@ -186,7 +239,7 @@ Submitted At: {order.submitted_at}
         return f"Error fetching orders: {str(e)}"
 
 @mcp.tool()
-async def place_market_order(symbol: str, side: str, quantity: float) -> str:
+async def place_market_order(symbol: str, side: str, quantity: float, api_key: str, api_secret: str, paper: bool = True) -> str:
     """
     Place a market order.
     
@@ -194,9 +247,13 @@ async def place_market_order(symbol: str, side: str, quantity: float) -> str:
         symbol: Stock ticker symbol (e.g., AAPL, MSFT)
         side: Order side (buy or sell)
         quantity: Number of shares to buy or sell
+        api_key: Alpaca API key ID
+        api_secret: Alpaca API secret key
+        paper: Whether to use paper trading (default: True)
     """
     try:
-        # Convert side string to enum
+        trading_client = TradingClient(api_key, api_secret, paper=paper)
+        
         if side.lower() == "buy":
             order_side = OrderSide.BUY
         elif side.lower() == "sell":
@@ -204,7 +261,6 @@ async def place_market_order(symbol: str, side: str, quantity: float) -> str:
         else:
             return f"Invalid order side: {side}. Must be 'buy' or 'sell'."
         
-        # Create market order request
         order_data = MarketOrderRequest(
             symbol=symbol,
             qty=quantity,
@@ -212,7 +268,6 @@ async def place_market_order(symbol: str, side: str, quantity: float) -> str:
             time_in_force=TimeInForce.DAY
         )
         
-        # Submit order
         order = trading_client.submit_order(order_data)
         
         return f"""
@@ -230,7 +285,7 @@ Status: {order.status}
         return f"Error placing market order: {str(e)}"
 
 @mcp.tool()
-async def place_limit_order(symbol: str, side: str, quantity: float, limit_price: float) -> str:
+async def place_limit_order(symbol: str, side: str, quantity: float, limit_price: float, api_key: str, api_secret: str, paper: bool = True) -> str:
     """
     Place a limit order.
     
@@ -239,9 +294,13 @@ async def place_limit_order(symbol: str, side: str, quantity: float, limit_price
         side: Order side (buy or sell)
         quantity: Number of shares to buy or sell
         limit_price: Limit price for the order
+        api_key: Alpaca API key ID
+        api_secret: Alpaca API secret key
+        paper: Whether to use paper trading (default: True)
     """
     try:
-        # Convert side string to enum
+        trading_client = TradingClient(api_key, api_secret, paper=paper)
+        
         if side.lower() == "buy":
             order_side = OrderSide.BUY
         elif side.lower() == "sell":
@@ -249,7 +308,6 @@ async def place_limit_order(symbol: str, side: str, quantity: float, limit_price
         else:
             return f"Invalid order side: {side}. Must be 'buy' or 'sell'."
         
-        # Create limit order request
         order_data = LimitOrderRequest(
             symbol=symbol,
             qty=quantity,
@@ -258,7 +316,6 @@ async def place_limit_order(symbol: str, side: str, quantity: float, limit_price
             limit_price=limit_price
         )
         
-        # Submit order
         order = trading_client.submit_order(order_data)
         
         return f"""
@@ -277,9 +334,17 @@ Status: {order.status}
         return f"Error placing limit order: {str(e)}"
 
 @mcp.tool()
-async def cancel_all_orders() -> str:
-    """Cancel all open orders."""
+async def cancel_all_orders(api_key: str, api_secret: str, paper: bool = True) -> str:
+    """
+    Cancel all open orders.
+    
+    Args:
+        api_key: Alpaca API key ID
+        api_secret: Alpaca API secret key
+        paper: Whether to use paper trading (default: True)
+    """
     try:
+        trading_client = TradingClient(api_key, api_secret, paper=paper)
         cancel_statuses = trading_client.cancel_orders()
         return f"Successfully canceled all open orders. Status: {cancel_statuses}"
     except Exception as e:
@@ -287,14 +352,18 @@ async def cancel_all_orders() -> str:
 
 # Account management tools
 @mcp.tool()
-async def close_all_positions(cancel_orders: bool = True) -> str:
+async def close_all_positions(api_key: str, api_secret: str, paper: bool = True, cancel_orders: bool = True) -> str:
     """
     Close all open positions.
     
     Args:
+        api_key: Alpaca API key ID
+        api_secret: Alpaca API secret key
+        paper: Whether to use paper trading (default: True)
         cancel_orders: Whether to cancel all open orders before closing positions (default: True)
     """
     try:
+        trading_client = TradingClient(api_key, api_secret, paper=paper)
         trading_client.close_all_positions(cancel_orders=cancel_orders)
         return "Successfully closed all positions."
     except Exception as e:
@@ -302,4 +371,13 @@ async def close_all_positions(cancel_orders: bool = True) -> str:
 
 # Run the server
 if __name__ == "__main__":
-    mcp.run(transport='stdio')
+    try:
+        logger.info("Starting MCP server...")
+        # Let the inspector handle the transport
+        mcp.run()
+    except KeyboardInterrupt:
+        logger.info("Server shutdown requested")
+        sys.exit(0)
+    except Exception as e:
+        logger.error(f"Server error: {e}")
+        sys.exit(1)

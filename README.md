@@ -13,8 +13,8 @@ This is a Model Context Protocol (MCP) server for Alpaca, allowing LLMs like Cla
 ## Prerequisites
 
 - Python 3.10+
-- Alpaca API keys
-- Claude for Desktop or another MCP client
+- Alpaca API keys (from https://app.alpaca.markets/paper/dashboard/overview)
+- Node.js and npm (for running the MCP inspector)
 
 ## Installation
 
@@ -29,65 +29,40 @@ This is a Model Context Protocol (MCP) server for Alpaca, allowing LLMs like Cla
    pip install mcp alpaca-py python-dotenv
    ```
 
-3. Create a `.env` file with your Alpaca API credentials:
-   ```
-   API_KEY_ID=your_alpaca_api_key
-   API_SECRET_KEY=your_alpaca_secret_key
-   ```
-
 ## Usage
 
 ### Running the server
 
-Start the server by running:
+Start the server using the MCP inspector:
 
 ```bash
-python alpaca_mcp_server.py
+npx @modelcontextprotocol/inspector python alpaca_mcp_server.py
 ```
 
-### Configuring Claude for Desktop
-
-1. Open Claude for Desktop
-2. Go to Settings
-3. Click on "Developer" and then "Edit Config"
-4. Add the server configuration to `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "alpaca": {
-      "command": "python",
-      "args": [
-        "/path/to/alpaca_mcp_server.py"
-      ],
-      "env": {
-        "API_KEY_ID": "your_alpaca_api_key",
-        "API_SECRET_KEY": "your_alpaca_secret_key"
-      }
-    }
-  }
-}
-```
-
-5. Save and restart Claude for Desktop
+The inspector will start a web interface at http://127.0.0.1:6274 where you can interact with the server.
 
 ### Available Tools
 
-The server exposes the following tools:
+The server exposes the following tools, each requiring your Alpaca API credentials as parameters:
 
-- `get_account_info()` - Get account balances and status
-- `get_positions()` - List all current positions in the portfolio
-- `get_stock_quote(symbol)` - Get the latest quote for a stock
-- `get_stock_bars(symbol, days)` - Get historical price bars for a stock
-- `get_orders(status, limit)` - List orders with specified status
-- `place_market_order(symbol, side, quantity)` - Place a market order
-- `place_limit_order(symbol, side, quantity, limit_price)` - Place a limit order
-- `cancel_all_orders()` - Cancel all open orders
-- `close_all_positions(cancel_orders)` - Close all open positions
+- `get_account_info(api_key, api_secret, paper)` - Get account balances and status
+- `get_positions(api_key, api_secret, paper)` - List all current positions in the portfolio
+- `get_stock_quote(symbol, api_key, api_secret)` - Get the latest quote for a stock
+- `get_stock_bars(symbol, api_key, api_secret, days)` - Get historical price bars for a stock
+- `get_orders(api_key, api_secret, paper, status, limit)` - List orders with specified status
+- `place_market_order(symbol, side, quantity, api_key, api_secret, paper)` - Place a market order
+- `place_limit_order(symbol, side, quantity, limit_price, api_key, api_secret, paper)` - Place a limit order
+- `cancel_all_orders(api_key, api_secret, paper)` - Cancel all open orders
+- `close_all_positions(api_key, api_secret, paper, cancel_orders)` - Close all open positions
+
+Each tool requires:
+- `api_key`: Your Alpaca API key ID
+- `api_secret`: Your Alpaca API secret key
+- `paper`: Boolean indicating whether to use paper trading (defaults to True)
 
 ## Example Queries
 
-Once the server is connected to Claude, you can ask questions like:
+When using the MCP inspector, you can ask questions like:
 
 - "What's my current account balance and buying power?"
 - "Show me my current positions"
@@ -97,13 +72,15 @@ Once the server is connected to Claude, you can ask questions like:
 - "Sell 10 shares of AMZN with a limit price of $130"
 - "Cancel all my open orders"
 
-## Note
-
-This server uses Alpaca's paper trading by default. To use real money trading, change `paper=True` to `paper=False` in the `TradingClient` initialization.
+The LLM will automatically include your API credentials when making the calls.
 
 ## Security Notice
 
-This MCP server will have access to your Alpaca account and can place real trades. Always review what Claude is suggesting before approving any trades.
+This MCP server will have access to your Alpaca account and can place real trades. Always:
+1. Keep your API credentials secure
+2. Review what the LLM is suggesting before approving any trades
+3. Use paper trading (paper=True) while testing
+4. Never share your API credentials in public repositories or discussions
 
 ## License
 
