@@ -1,7 +1,6 @@
 import os
 import sys
 import logging
-from dotenv import load_dotenv
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 from mcp.server.fastmcp import FastMCP
@@ -16,34 +15,12 @@ from alpaca.data.timeframe import TimeFrame
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Load environment variables from .env file
-load_dotenv()
-
 # Initialize FastMCP server
 try:
     mcp = FastMCP("alpaca-trading")
     logger.info("MCP server initialized successfully")
 except Exception as e:
     logger.error(f"Failed to initialize MCP server: {e}")
-    sys.exit(1)
-
-# Initialize Alpaca clients using environment variables
-API_KEY = os.getenv("API_KEY_ID")
-API_SECRET = os.getenv("API_SECRET_KEY")
-PAPER = os.getenv("PAPER", "true").lower() == "true"
-
-# Check if keys are available
-if not API_KEY or not API_SECRET:
-    logger.error("Alpaca API credentials not found in environment variables.")
-    raise ValueError("Alpaca API credentials not found in environment variables.")
-
-try:
-    # Initialize trading and data clients
-    trading_client = TradingClient(API_KEY, API_SECRET, paper=PAPER)
-    stock_client = StockHistoricalDataClient(API_KEY, API_SECRET)
-    logger.info("Alpaca clients initialized successfully")
-except Exception as e:
-    logger.error(f"Failed to initialize Alpaca clients: {e}")
     sys.exit(1)
 
 # Account information tools
